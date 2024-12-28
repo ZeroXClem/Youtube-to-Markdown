@@ -81,16 +81,19 @@ The CLI version provides the same core functionality as the web interface but in
 
 ## 📁 Project Structure
 
-```
 .
 ├── .git
 ├── requirements.txt
+├── transcript_helper.py
 ├── versions
+├── youtube_transcript_cli.py
 └── youtube-transcript-downloader2.py
 ```
 
 - `requirements.txt`: List of Python packages required for the project
+- `transcript_helper.py`: Helper functions for transcript processing and formatting
 - `versions/`: Directory containing different versions of the script
+- `youtube_transcript_cli.py`: Command-line interface version of the application
 - `youtube-transcript-downloader2.py`: Main Streamlit application script
 
 ## 🤝 Contributing
