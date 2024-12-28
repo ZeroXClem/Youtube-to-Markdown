@@ -124,7 +124,9 @@ def download_transcript(video_url, file_name, export_format):
         selected_language = st.selectbox("🗣️ Select transcript language:", languages)
 
         # Get the transcript
-        transcript = YouTubeTranscriptApi.get_transcript(video_id, languages=[selected_language])
+        # Get the transcript using our fallback helper
+        from transcript_helper import get_transcript_with_fallback
+        transcript = get_transcript_with_fallback(video_id, selected_language)
 
         # Process the transcript
         paragraphs = process_transcript(transcript)
