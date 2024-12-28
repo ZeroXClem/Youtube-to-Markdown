@@ -81,11 +81,10 @@ The CLI version provides the same core functionality as the web interface but in
 
 ## 📁 Project Structure
 
-.
-├── .git
+├── .git/
 ├── requirements.txt
 ├── transcript_helper.py
-├── versions
+├── versions/
 ├── youtube_transcript_cli.py
 └── youtube-transcript-downloader2.py
 ```
