@@ -1,0 +1,18 @@
+[
+  {
+    "filename": ".gitignore",
+    "originalContent": "",
+    "edits": [
+      {
+        "explain": "Adding standard Python gitignore patterns to prevent committing unnecessary files like bytecode, virtual environments, and IDE-specific files",
+        "filename": ".gitignore",
+        "change": {
+          "type": "replacement",
+          "fromLineNumber": 1,
+          "toLineNumber": 1
+        },
+        "code": "# Byte-compiled / optimized / DLL files\n__pycache__/\n*.py[cod]\n*$py.class\n\n# Distribution / packaging\ndist/\nbuild/\n*.egg-info/\n\n# Virtual environments\nvenv/\nenv/\n.env/\n.venv/\n\n# IDE specific files\n.idea/\n.vscode/\n*.swp\n*.swo\n\n# Local development settings\n.env\n\n# Testing\n.coverage\nhtmlcov/\n.pytest_cache/\n\n# Jupyter Notebook\n.ipynb_checkpoints"
+      }
+    ]
+  }
+]
