@@ -2,7 +2,7 @@
 __pycache__/
 *.py[cod]
 *$py.class
-
+mandark-history.json
 # Distribution / packaging
 dist/
 build/
