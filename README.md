@@ -13,16 +13,40 @@ Convert YouTube video transcripts into easily readable Markdown format! This Str
 
 ## 🛠️ Installation
 
-1. Clone this repository:
+### Recommended Setup
+
+1. Create and activate a virtual environment:
+   ```bash
+   # Using conda (recommended)
+   conda create -n youtube-md python=3.10
+   conda activate youtube-md
+
+   # OR using venv
+   python -m venv .venv
+   source .venv/bin/activate  # On Windows: .venv\Scripts\activate
    ```
+
+2. Install UV (recommended for faster package installation):
+   ```bash
+   pip install uv
+   ```
+
+3. Clone this repository:
+   ```bash
    git clone https://github.com/ZeroXClem/YouTube-to-Markdown.git
    ```
-2. Navigate to the project directory:
-   ```
+
+4. Navigate to the project directory:
+   ```bash
    cd YouTube-to-Markdown
    ```
-3. Install the required packages:
-   ```
+
+5. Install dependencies (choose one method):
+   ```bash
+   # Using UV (recommended)
+   uv pip install -r requirements.txt
+
+   # OR using pip
    pip install -r requirements.txt
    ```
 
