@@ -36,6 +36,23 @@ Convert YouTube video transcripts into easily readable Markdown format! This Str
 3. Enter a YouTube video URL or ID
 4. Select your preferred options (file name, save path, export format)
 5. Click "Download Transcript"
+
+## 🖥️ CLI Version
+
+A command-line interface version is also available for users who prefer terminal-based operations:
+
+1. Run the CLI version:
+   ```
+   python youtube_transcript_cli.py
+   ```
+2. Follow the interactive prompts to:
+   - Enter YouTube video URL or ID
+   - Select transcript language
+   - Choose export format
+   - Specify output filename
+
+The CLI version provides the same core functionality as the web interface but in a terminal-friendly format.
+
 6. View the transcript preview and use the download button to save the formatted transcript
 
 ## 📁 Project Structure
