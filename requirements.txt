@@ -1,2 +1,3 @@
 youtube-transcript-api
 streamlit
+yt-dlp
