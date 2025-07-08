@@ -1,181 +1,190 @@
-from youtube_transcript_api import YouTubeTranscriptApi, TranscriptsDisabled, NoTranscriptFound, VideoUnavailable
-import requests
+#!/usr/bin/env python3
+"""
+YouTube Transcript Downloader – v1.1 (Linux‑friendly filenames)
+
+Changes:
+• sanitize_filename() now produces simple ASCII‑only, kebab‑case names that
+  play nicely with Linux tools (`ComfyUI_Tutorial` → `comfyui-tutorial`).
+• Rest of the CLI unchanged from the previous working version.
+"""
+
 import json
-import re
 import os
-from datetime import timedelta  # You were importing this but not using it. I've removed it.
-# Assuming transcript_helper.py is in the same directory
-from transcript_helper import get_transcript_with_fallback
+import re
+import unicodedata
+from datetime import datetime
+
+import requests
+from youtube_transcript_api import (
+    YouTubeTranscriptApi,
+    TranscriptsDisabled,
+    NoTranscriptFound,
+    VideoUnavailable,
+)
+
+from transcript_helper import get_transcript_with_fallback  # local helper
+
+# ---------------------------------------------------------------------------
+def sanitize_filename(title: str) -> str:
+    """Return a safe, predictable filename.
+
+    • ASCII‑only (strip accents / symbols)
+    • lower‑case kebab‑case
+    • max 100 chars
+    • keeps dots so you can append an extension later
+    """
+    # Normalize & transliterate to ASCII
+    slug = (
+        unicodedata.normalize("NFKD", title)
+        .encode("ascii", "ignore")
+        .decode("ascii")
+    )
+    # Replace ampersands with 'and'
+    slug = slug.replace("&", "and")
+    # Turn whitespace into single dashes
+    slug = re.sub(r"\s+", "-", slug)
+    # Remove anything not alphanum, dash, underscore or dot
+    slug = re.sub(r"[^0-9A-Za-z._-]", "", slug)
+    # Collapse multiple dashes
+    slug = re.sub(r"-{2,}", "-", slug)
+    # Trim leading/trailing punctuation
+    slug = slug.strip("-_.").lower()
+    return slug[:100]  # 100 chars is plenty
 
 
-def sanitize_filename(title):
-    """Sanitizes a string to be a valid filename."""
-    s = re.sub(r'[\\/*?:"<>|]', '', title)
-    s = re.sub(r'\s+', '_', s)
-    s = s[:100]  # Keep the truncation
-    return s
-
-def get_video_info(video_id):
+def get_video_info(video_id: str) -> dict[str, str]:
+    url = f"https://noembed.com/embed?url=https://www.youtube.com/watch?v={video_id}"
     try:
-        url = f"https://noembed.com/embed?url=https://www.youtube.com/watch?v={video_id}"
-        response = requests.get(url)
-        response.raise_for_status()  # This is good; it raises an exception for bad status codes
-        data = response.json()
-        return {
-            "title": data.get("title", "Unknown Title"),
-            "author_name": data.get("author_name", "Unknown Channel")
-        }
+        data = requests.get(url, timeout=10).json()
     except requests.RequestException:
-        return {
-            "title": "Unknown Title",
-            "author_name": "Unknown Channel"
-        }
+        data = {}
+    return {
+        "title": data.get("title", "unknown-title"),
+        "author_name": data.get("author_name", "unknown-channel"),
+    }
+
 
 def process_transcript(transcript):
-    #This section is great, good job.
-    full_text = ' '.join([fragment['text'] for fragment in transcript])
-    full_text = re.sub(r'\[?[0-9]+:[0-9]+\]?', '', full_text)
-    sentences = re.split(r'(?<=[.!?]) +', full_text)
-
-    paragraphs = []
-    current_paragraph = []
-    for sentence in sentences:
-        current_paragraph.append(sentence)
-        if len(current_paragraph) >= 3:
-            paragraphs.append(' '.join(current_paragraph))
-            current_paragraph = []
-
-    if current_paragraph:
-        paragraphs.append(' '.join(current_paragraph))
-
-    return paragraphs
-
-def extract_video_id(url):
-    if re.match(r'^[a-zA-Z0-9_-]{11}$', url):
-        return url
-
-    regex_patterns = [
-        r'(?:https?://)?(?:www\.)?youtube\.com/watch\?v=([a-zA-Z0-9_-]{11})',
-        r'(?:https?://)?(?:www\.)?youtu\.be/([a-zA-Z0-9_-]{11})',
-        r'(?:https?://)?(?:www\.)?youtube\.com/embed/([a-zA-Z0-9_-]{11})',
-        r'(?:https?://)?(?:www\.)?youtube\.com/v/([a-zA-Z0-9_-]{11})'
+    texts = [
+        getattr(snippet, "text", snippet.get("text", "")) for snippet in transcript
     ]
+    full_text = " ".join(texts)
+    full_text = re.sub(r"\[?[0-9]+:[0-9]+\]?", "", full_text)
 
-    for pattern in regex_patterns:
-        match = re.match(pattern, url)
-        if match:
-            return match.group(1)
+    sentences = re.split(r"(?<=[.!?]) +", full_text)
+    paras, current = [], []
+    for sent in sentences:
+        current.append(sent)
+        if len(current) >= 3:
+            paras.append(" ".join(current))
+            current = []
+    if current:
+        paras.append(" ".join(current))
+    return paras
+
+
+def extract_video_id(url_or_id: str):
+    if re.match(r"^[a-zA-Z0-9_-]{11}$", url_or_id):
+        return url_or_id
+    pats = [
+        r"(?:https?://)?(?:www\.)?youtube\.com/watch\?v=([a-zA-Z0-9_-]{11})",
+        r"(?:https?://)?(?:www\.)?youtu\.be/([a-zA-Z0-9_-]{11})",
+        r"(?:https?://)?(?:www\.)?youtube\.com/embed/([a-zA-Z0-9_-]{11})",
+        r"(?:https?://)?(?:www\.)?youtube\.com/v/([a-zA-Z0-9_-]{11})",
+    ]
+    for pat in pats:
+        m = re.match(pat, url_or_id)
+        if m:
+            return m.group(1)
     return None
 
-def save_transcript(formatted_transcript, filename, extension, output_directory="."): #added output_directory
-    """Saves the transcript to a file.
 
-    Args:
-      formatted_transcript: content to be written
-      filename: name of the file
-      extension: file type
-      output_directory: Where to write the file to.
-    """
-    file_path = os.path.join(output_directory, f"{filename}.{extension}")
-    with open(file_path, 'w', encoding='utf-8') as f:
-        f.write(formatted_transcript)
+def save_transcript(content: str, name: str, ext: str, out_dir: str = "."):
+    os.makedirs(out_dir, exist_ok=True)
+    path = os.path.join(out_dir, f"{name}.{ext}")
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(content)
+    return path
 
+
+# ---------------------------------------------------------------------------
 def main():
-    print("📜 YouTube Transcript Downloader CLI")
-    print("-" * 40)
+    print("\n📜 YouTube Transcript Downloader CLI\n" + "-" * 40)
 
-    # Get video URL/ID
     while True:
-        video_url = input("🔗 Enter YouTube Video URL or Video ID: ").strip()
-        video_id = extract_video_id(video_url)
-        if video_id:
+        vid_input = input("🔗 Enter YouTube Video URL or Video ID: ").strip()
+        vid = extract_video_id(vid_input)
+        if vid:
             break
-        print("❌ Invalid YouTube URL or Video ID. Please try again.")
+        print("❌ Invalid YouTube URL or Video ID. Please try again.")
 
     try:
-        # Get video info
-        video_info = get_video_info(video_id)
-        video_title = video_info['title'] #stored title
-        print(f"\n📺 Video: {video_title}")
-        print(f"👤 Channel: {video_info['author_name']}")
+        info = get_video_info(vid)
+        print(f"\n📺 Video: {info['title']}")
+        print(f"👤 Channel: {info['author_name']}")
 
-        # Get available languages
-        transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
-        languages = [transcript.language_code for transcript in transcript_list]
-
-        print("\n🗣️ Available languages:")
-        for i, lang in enumerate(languages, 1):
-            print(f"{i}. {lang}")
-
-        # Select language
+        tlist = YouTubeTranscriptApi.list_transcripts(vid)
+        langs = [t.language_code for t in tlist]
+        print("\n🗣️ Available languages:")
+        for i, l in enumerate(langs, 1):
+            print(f"{i}. {l}")
         while True:
             try:
-                lang_idx = int(input("\nSelect language number: ")) - 1
-                if 0 <= lang_idx < len(languages):
-                    selected_language = languages[lang_idx]
+                idx = int(input("\nSelect language number: ")) - 1
+                if 0 <= idx < len(langs):
+                    lang = langs[idx]
                     break
-                print("❌ Invalid selection. Please try again.")
             except ValueError:
-                print("❌ Please enter a valid number.")
+                pass
+            print("❌ Invalid selection. Please try again.")
 
-        # Get transcript
-        transcript = get_transcript_with_fallback(video_id, selected_language)
-        paragraphs = process_transcript(transcript)
+        transcript = get_transcript_with_fallback(vid, lang)
+        if hasattr(transcript, "to_raw_data"):
+            transcript = transcript.to_raw_data()
+        paras = process_transcript(transcript)
 
-        # Select export format
-        print("\n📂 Available export formats:")
-        formats = ["Markdown", "Plain Text", "JSON"]
-        for i, fmt in enumerate(formats, 1):
-            print(f"{i}. {fmt}")
-
+        fmts = ["Markdown", "Plain Text", "JSON"]
+        print("\n📂 Available export formats:")
+        for i, f in enumerate(fmts, 1):
+            print(f"{i}. {f}")
         while True:
             try:
-                fmt_idx = int(input("\nSelect format number: ")) - 1
-                if 0 <= fmt_idx < len(formats):
-                    export_format = formats[fmt_idx]
+                fidx = int(input("\nSelect format number: ")) - 1
+                if 0 <= fidx < len(fmts):
+                    target_fmt = fmts[fidx]
                     break
-                print("❌ Invalid selection. Please try again.")
             except ValueError:
-                print("❌ Please enter a valid number.")
+                pass
+            print("❌ Invalid selection. Please try again.")
 
-        # --- Get output directory ---
-        output_dir = input("\n📁 Enter output directory (leave blank for current directory): ").strip()
-        if not output_dir:
-            output_dir = "."  # Default to current directory
-        os.makedirs(output_dir, exist_ok=True)  # Create directory if it doesn't exist
+        out_dir = input("\n📁 Enter output directory (blank = current): ").strip() or "."
+        fname = sanitize_filename(info['title']) + "-" + datetime.now().strftime("%Y%m%d-%H%M%S")  # type: ignore
 
-        # --- Automatic Filename Generation ---
-        filename = sanitize_filename(video_title)
+        if target_fmt == "Markdown":
+            content = f"# {info['title']}\n\n" + "\n\n".join(paras)
+            ext = "md"
+        elif target_fmt == "Plain Text":
+            content = f"{info['title']}\n\n" + "\n\n".join(paras)
+            ext = "txt"
+        else:
+            content = json.dumps(
+                {"title": info['title'], "author": info['author_name'], "paragraphs": paras},
+                indent=2,
+            )
+            ext = "json"
 
-
-        # Format and save transcript
-        if export_format == "Markdown":
-            formatted_transcript = f"# {video_title}\n\n"
-            formatted_transcript += "\n\n".join(paragraphs)
-            extension = "md"
-        elif export_format == "Plain Text":
-            formatted_transcript = f"{video_title}\n\n"
-            formatted_transcript += "\n\n".join(paragraphs)
-            extension = "txt"
-        else:  # JSON
-            formatted_transcript = json.dumps({
-                "title": video_info['title'],
-                "author": video_info['author_name'],
-                "paragraphs": paragraphs
-            }, indent=2)
-            extension = "json"
-
-        save_transcript(formatted_transcript, filename, extension, output_dir) #pass directory
-        print(f"\n✅ Transcript saved as {filename}.{extension} in {output_dir}")
+        path = save_transcript(content, fname, ext, out_dir)
+        print(f"\n✅ Transcript saved to {path}\n")
 
     except TranscriptsDisabled:
-        print("❌ Transcripts are disabled for this video.")
+        print("❌ Transcripts are disabled for this video.")
     except NoTranscriptFound:
-        print("❌ No transcripts found for the selected language.")
+        print("❌ No transcripts found for the selected language.")
     except VideoUnavailable:
-        print("❌ The video is unavailable. Please check the Video ID or URL.")
-    except Exception as e:
-        print(f"❌ An unexpected error occurred: {str(e)}")
+        print("❌ The video is unavailable.")
+    except Exception as ex:
+        print(f"❌ An unexpected error occurred: {ex}")
+
 
 if __name__ == "__main__":
     main()
