@@ -1,205 +1,176 @@
-import streamlit as st
-from youtube_transcript_api import YouTubeTranscriptApi, TranscriptsDisabled, NoTranscriptFound, VideoUnavailable
-import json
-import requests
-from datetime import timedelta
-import re
+#!/usr/bin/env python3
+"""
+Streamlit YouTube Transcript Downloader — fixed for youtube-transcript-api v1.x
+------------------------------------------------------------------------------
+
+• Accepts either list[dict] *or* FetchedTranscriptSnippet objects.
+• Converts to raw data if the helper returns a FetchedTranscript.
+• Dual‑compatible `process_transcript()`.
+
+Save as `youtube-transcript-downloader2.py`, then run:
+
+    streamlit run youtube-transcript-downloader2.py
+"""
+
 import base64
+import json
+import re
+from datetime import timedelta
 
-# Function to get video info
-def get_video_info(video_id):
+import requests
+import streamlit as st
+from youtube_transcript_api import (
+    YouTubeTranscriptApi,
+    TranscriptsDisabled,
+    NoTranscriptFound,
+    VideoUnavailable,
+)
+
+# ---- helper: fetch with fallback -------------------------------------------
+from transcript_helper import get_transcript_with_fallback
+
+
+def get_video_info(video_id: str):
+    url = f"https://noembed.com/embed?url=https://www.youtube.com/watch?v={video_id}"
     try:
-        url = f"https://noembed.com/embed?url=https://www.youtube.com/watch?v={video_id}"
-        response = requests.get(url)
-        response.raise_for_status()
-        data = response.json()
-        return {
-            "title": data.get("title", "Unknown Title"),
-            "author_name": data.get("author_name", "Unknown Channel"),
-            "thumbnail_url": data.get("thumbnail_url", "")
-        }
+        data = requests.get(url, timeout=10).json()
     except requests.RequestException:
-        return {
-            "title": "Unknown Title",
-            "author_name": "Unknown Channel",
-            "thumbnail_url": ""
-        }
+        data = {}
+    return {
+        "title": data.get("title", "Unknown Title"),
+        "author_name": data.get("author_name", "Unknown Channel"),
+        "thumbnail_url": data.get("thumbnail_url", ""),
+    }
 
-# Function to format time
-def format_time(seconds):
+
+def format_time(seconds: int):
     return str(timedelta(seconds=int(seconds)))
 
-# Function to process transcript and create paragraphs
+
 def process_transcript(transcript):
-    # Combine all text fragments
-    full_text = ' '.join([fragment['text'] for fragment in transcript])
+    """Return paragraphs from *transcript*.
 
-    # Remove any remaining timestamps (if any)
-    full_text = re.sub(r'\[?[0-9]+:[0-9]+\]?', '', full_text)
+    Accepts either dicts or FetchedTranscriptSnippet objects."""
+    texts = [
+        getattr(frag, "text", frag.get("text", "")) for frag in transcript
+    ]
+    full_text = " ".join(texts)
+    full_text = re.sub(r"\[?[0-9]+:[0-9]+\]?", "", full_text)
 
-    # Split into sentences
-    sentences = re.split(r'(?<=[.!?]) +', full_text)
+    sentences = re.split(r"(?<=[.!?]) +", full_text)
 
-    # Group sentences into paragraphs (every 3-5 sentences)
-    paragraphs = []
-    current_paragraph = []
+    paragraphs, current = [], []
     for sentence in sentences:
-        current_paragraph.append(sentence)
-        if len(current_paragraph) >= 3:
-            paragraphs.append(' '.join(current_paragraph))
-            current_paragraph = []
-
-    # Add any remaining sentences as a paragraph
-    if current_paragraph:
-        paragraphs.append(' '.join(current_paragraph))
-
+        current.append(sentence)
+        if len(current) >= 3:
+            paragraphs.append(" ".join(current))
+            current = []
+    if current:
+        paragraphs.append(" ".join(current))
     return paragraphs
 
-# Title of the Web App
+
+def extract_video_id(url: str):
+    if re.match(r"^[a-zA-Z0-9_-]{11}$", url):
+        return url
+    pats = [
+        r"(?:https?://)?(?:www\.)?youtube\.com/watch\?v=([a-zA-Z0-9_-]{11})",
+        r"(?:https?://)?(?:www\.)?youtu\.be/([a-zA-Z0-9_-]{11})",
+        r"(?:https?://)?(?:www\.)?youtube\.com/embed/([a-zA-Z0-9_-]{11})",
+        r"(?:https?://)?(?:www\.)?youtube\.com/v/([a-zA-Z0-9_-]{11})",
+    ]
+    for pat in pats:
+        m = re.match(pat, url)
+        if m:
+            return m.group(1)
+    return None
+
+
+# ---- Streamlit UI -----------------------------------------------------------
 st.title("📜 YouTube Transcript Downloader")
 
-# Dark mode toggle
-if 'dark_mode' not in st.session_state:
+if "dark_mode" not in st.session_state:
     st.session_state.dark_mode = False
 
 dark_mode = st.sidebar.checkbox("🌙 Dark Mode", value=st.session_state.dark_mode)
 st.session_state.dark_mode = dark_mode
 
-if dark_mode:
-    st.markdown("""
-    <style>
-    .stApp {
-        background-color: #2b2b2b;
-        color: #ffffff;
-    }
-    a {
-        color: #1e90ff;
-    }
-    </style>
-    """, unsafe_allow_html=True)
-else:
-    st.markdown("""
-    <style>
-    .stApp {
-        background-color: #ffffff;
-        color: #000000;
-    }
-    a {
-        color: #1e90ff;
-    }
-    </style>
-    """, unsafe_allow_html=True)
+# simple inline css
+st.markdown(
+    """<style>
+    .stApp {background-color:%s; color:%s;}
+    a {color:#1e90ff;}
+    </style>""" % ("#2b2b2b" if dark_mode else "#ffffff", "#ffffff" if dark_mode else "#000000"),  # noqa: E501
+    unsafe_allow_html=True,
+)
 
-# Get the URL Input
-video_url = st.text_input("🔗 Enter YouTube Video URL or YouTube Video ID:")
-
-# File name input
+video_url = st.text_input("🔗 Enter YouTube Video URL or Video ID:")
 file_name = st.text_input("📝 Enter file name (without extension):", "transcript")
-
-# Export format selection
 export_format = st.selectbox("📂 Select export format:", ["Markdown", "Plain Text", "JSON"])
-
-# Download Button
 download = st.button("⬇️ Download Transcript")
 
-# YouTube Transcript API to download the transcript and format it
-def download_transcript(video_url, file_name, export_format):
+
+def download_transcript(url: str, fname: str, fmt: str):
     try:
-        # Extract the Video ID from the URL
-        video_id = extract_video_id(video_url)
-        if not video_id:
+        vid = extract_video_id(url)
+        if not vid:
             st.error("❌ Invalid YouTube URL or Video ID.")
             return
 
-        # Get video info
-        video_info = get_video_info(video_id)
-        if video_info['thumbnail_url']:
-            st.image(video_info['thumbnail_url'], caption=f"{video_info['title']} - {video_info['author_name']}")
-        else:
-            st.warning("⚠️ Unable to fetch video thumbnail.")
+        info = get_video_info(vid)
+        if info["thumbnail_url"]:
+            st.image(info["thumbnail_url"], caption=f"{info['title']} – {info['author_name']}")  # noqa: E501
 
-        # Get available transcript languages
-        transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
-        languages = [transcript.language_code for transcript in transcript_list]
-        selected_language = st.selectbox("🗣️ Select transcript language:", languages)
+        tlist = YouTubeTranscriptApi.list_transcripts(vid)
+        langs = [tr.language_code for tr in tlist]
+        sel_lang = st.selectbox("🗣️ Select transcript language:", langs)
 
-        # Get the transcript
-        # Get the transcript using our fallback helper
-        from transcript_helper import get_transcript_with_fallback
-        transcript = get_transcript_with_fallback(video_id, selected_language)
+        transcript = get_transcript_with_fallback(vid, sel_lang)
 
-        # Process the transcript
+        # if helper returned a FetchedTranscript, convert:
+        if hasattr(transcript, "to_raw_data"):
+            transcript = transcript.to_raw_data()
+
         paragraphs = process_transcript(transcript)
 
-        # Format the transcript based on the selected export format
-        if export_format == "Markdown":
-            formatted_transcript = f"# {video_info['title']}\n\n"
-            for paragraph in paragraphs:
-                formatted_transcript += f"{paragraph}\n\n"
-            file_extension = "md"
-            mime_type = "text/markdown"
-        elif export_format == "Plain Text":
-            formatted_transcript = f"{video_info['title']}\n\n"
-            for paragraph in paragraphs:
-                formatted_transcript += f"{paragraph}\n\n"
-            file_extension = "txt"
-            mime_type = "text/plain"
-        else:  # JSON
-            formatted_transcript = json.dumps({
-                "title": video_info['title'],
-                "author": video_info['author_name'],
-                "paragraphs": paragraphs
-            }, indent=2)
-            file_extension = "json"
-            mime_type = "application/json"
+        if fmt == "Markdown":
+            content = f"# {info['title']}\n\n" + "\n\n".join(paragraphs)
+            ext = "md"
+            mime = "text/markdown"
+        elif fmt == "Plain Text":
+            content = f"{info['title']}\n\n" + "\n\n".join(paragraphs)
+            ext = "txt"
+            mime = "text/plain"
+        else:
+            content = json.dumps(
+                {"title": info['title'], "author": info['author_name'], "paragraphs": paragraphs},
+                indent=2,
+            )
+            ext = "json"
+            mime = "application/json"
 
-        # Encode the transcript for download
-        b64 = base64.b64encode(formatted_transcript.encode()).decode()
-
-        href = f'<a href="data:{mime_type};base64,{b64}" download="{file_name}.{file_extension}">📥 Click here to download your transcript</a>'
+        b64 = base64.b64encode(content.encode()).decode()
+        href = f'<a href="data:{mime};base64,{b64}" download="{fname}.{ext}">📥 Click here to download your transcript</a>'  # noqa: E501
         st.markdown(href, unsafe_allow_html=True)
 
-        # Display a preview of the transcript
+        # preview
         st.subheader("📝 Transcript Preview")
-        preview_length = 1000
-        preview_text = formatted_transcript[:preview_length] + "..." if len(formatted_transcript) > preview_length else formatted_transcript
-        if export_format == "JSON":
-            st.json(json.loads(formatted_transcript)) if len(formatted_transcript) <= preview_length else st.text(preview_text)
+        preview_len = 1000
+        if fmt == "JSON" and len(content) <= preview_len:
+            st.json(json.loads(content))
         else:
-            st.text(preview_text)
+            st.text((content[:preview_len] + "...") if len(content) > preview_len else content)
 
     except TranscriptsDisabled:
         st.error("❌ Transcripts are disabled for this video.")
     except NoTranscriptFound:
         st.error("❌ No transcripts found for the selected language.")
     except VideoUnavailable:
-        st.error("❌ The video is unavailable. Please check the Video ID or URL.")
-    except Exception as e:
-        st.error(f"❌ An unexpected error occurred: {str(e)}")
+        st.error("❌ The video is unavailable.")
+    except Exception as exc:
+        st.error(f"❌ An unexpected error occurred: {exc}")
 
-def extract_video_id(url):
-    """
-    Extract the YouTube video ID from a URL or return the ID if it's already provided.
-    """
-    # If the input is already a video ID (11 characters)
-    if re.match(r'^[a-zA-Z0-9_-]{11}$', url):
-        return url
 
-    # Define regex patterns for YouTube URLs
-    regex_patterns = [
-        r'(?:https?://)?(?:www\.)?youtube\.com/watch\?v=([a-zA-Z0-9_-]{11})',
-        r'(?:https?://)?(?:www\.)?youtu\.be/([a-zA-Z0-9_-]{11})',
-        r'(?:https?://)?(?:www\.)?youtube\.com/embed/([a-zA-Z0-9_-]{11})',
-        r'(?:https?://)?(?:www\.)?youtube\.com/v/([a-zA-Z0-9_-]{11})'
-    ]
-
-    for pattern in regex_patterns:
-        match = re.match(pattern, url)
-        if match:
-            return match.group(1)
-    return None
-
-# Download Transcript
 if download:
     if not video_url:
         st.error("❌ Please enter a YouTube Video URL or Video ID.")
@@ -207,3 +178,4 @@ if download:
         st.error("❌ Please enter a valid file name.")
     else:
         download_transcript(video_url.strip(), file_name.strip(), export_format)
+
