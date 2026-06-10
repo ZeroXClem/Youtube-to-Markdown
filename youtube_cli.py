@@ -22,7 +22,7 @@ from youtube_transcript_api import (
     VideoUnavailable,
 )
 
-from transcript_helper import get_transcript_with_fallback  # local helper
+from transcript_helper import get_transcript_with_fallback, list_transcripts  # local helper
 
 # ---------------------------------------------------------------------------
 def sanitize_filename(title: str) -> str:
@@ -123,7 +123,7 @@ def main():
         print(f"\n📺 Video: {info['title']}")
         print(f"👤 Channel: {info['author_name']}")
 
-        tlist = YouTubeTranscriptApi.list_transcripts(vid)
+        tlist = list_transcripts(vid)
         langs = [t.language_code for t in tlist]
         print("\n🗣️ Available languages:")
         for i, l in enumerate(langs, 1):

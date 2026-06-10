@@ -14,20 +14,37 @@ Save as `youtube-transcript-downloader2.py`, then run:
 
 import base64
 import json
+import os
 import re
 from datetime import timedelta
 
 import requests
 import streamlit as st
 from youtube_transcript_api import (
-    YouTubeTranscriptApi,
     TranscriptsDisabled,
     NoTranscriptFound,
     VideoUnavailable,
 )
 
+# ---- proxy secrets ----------------------------------------------------------
+# YouTube blocks many cloud/datacenter IPs (Streamlit Cloud included), which the
+# transcript API reports as an empty response. Bridge any proxy credentials from
+# Streamlit secrets into the environment so transcript_helper can pick them up.
+for _key in (
+    "WEBSHARE_PROXY_USERNAME",
+    "WEBSHARE_PROXY_PASSWORD",
+    "YT_HTTP_PROXY",
+    "YT_HTTPS_PROXY",
+):
+    try:
+        if _key in st.secrets:
+            os.environ.setdefault(_key, str(st.secrets[_key]))
+    except Exception:
+        # No secrets.toml configured — env vars (if any) are used as-is.
+        break
+
 # ---- helper: fetch with fallback -------------------------------------------
-from transcript_helper import get_transcript_with_fallback
+from transcript_helper import get_transcript_with_fallback, list_transcripts
 
 
 def get_video_info(video_id: str):
@@ -121,7 +138,7 @@ def download_transcript(url: str, fname: str, fmt: str):
         if info["thumbnail_url"]:
             st.image(info["thumbnail_url"], caption=f"{info['title']} – {info['author_name']}")  # noqa: E501
 
-        tlist = YouTubeTranscriptApi.list_transcripts(vid)
+        tlist = list_transcripts(vid)
         langs = [tr.language_code for tr in tlist]
         sel_lang = st.selectbox("🗣️ Select transcript language:", langs)
 

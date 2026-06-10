@@ -75,6 +75,36 @@ Then in your browser:
 
 ---
 
+## 🌐 Running on a Cloud Host (Avoiding YouTube IP Blocks)
+
+YouTube blocks transcript requests from many cloud/datacenter IPs (Streamlit
+Community Cloud, CI runners, etc.). When this happens, the app fails with an
+empty response — typically surfaced as `RequestBlocked` or
+`"no element found: line 1, column 0"`, even though the video has captions.
+
+The fix is to route requests through a proxy. Set **one** of the following
+configurations as environment variables (locally/CLI) or as **Streamlit
+secrets** (`.streamlit/secrets.toml` or the "Secrets" box on Streamlit Cloud):
+
+```toml
+# Option A — Webshare residential proxies (recommended for hosted apps)
+WEBSHARE_PROXY_USERNAME = "your-webshare-username"
+WEBSHARE_PROXY_PASSWORD = "your-webshare-password"
+
+# Option B — a generic HTTP/HTTPS proxy
+YT_HTTP_PROXY  = "http://user:pass@host:port"
+YT_HTTPS_PROXY = "https://user:pass@host:port"
+```
+
+The Streamlit app bridges these secrets into the environment automatically, and
+`transcript_helper.py` applies the proxy to every transcript request. When no
+proxy is configured, requests are made directly (fine for local use).
+
+> Note: This requires `youtube-transcript-api>=1.0.0` (already pinned in
+> `requirements.txt`). Proxy support is not available in older versions.
+
+---
+
 ## 🖥️ Usage (CLI: Interactive Single Video)
 
 ### `youtube_cli.py`
