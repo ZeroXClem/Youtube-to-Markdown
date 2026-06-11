@@ -124,24 +124,60 @@ st.markdown(
 video_url = st.text_input("🔗 Enter YouTube Video URL or Video ID:")
 file_name = st.text_input("📝 Enter file name (without extension):", "transcript")
 export_format = st.selectbox("📂 Select export format:", ["Markdown", "Plain Text", "JSON"])
+
+
+@st.cache_data(show_spinner=False)
+def _cached_video_info(video_id: str):
+    return get_video_info(video_id)
+
+
+@st.cache_data(show_spinner="🔎 Looking up available transcripts…")
+def _cached_languages(video_id: str):
+    return [tr.language_code for tr in list_transcripts(video_id)]
+
+
+def _default_lang_index(langs):
+    """Prefer 'en', then any English variant (e.g. 'en-US'), else the first."""
+    if "en" in langs:
+        return langs.index("en")
+    for i, code in enumerate(langs):
+        if code.lower().startswith("en"):
+            return i
+    return 0
+
+
+# Resolve the video + available languages reactively, OUTSIDE the download
+# handler. The language picker used to live inside that handler, so it only
+# existed during the button-press run and vanished the instant a language was
+# selected (which triggers a re-run where the button is no longer pressed).
+# Rendering it here keeps it on screen across re-runs.
+vid = extract_video_id(video_url.strip()) if video_url.strip() else None
+info = None
+sel_lang = None
+
+if vid:
+    info = _cached_video_info(vid)
+    if info["thumbnail_url"]:
+        st.image(info["thumbnail_url"], caption=f"{info['title']} – {info['author_name']}")  # noqa: E501
+    try:
+        langs = _cached_languages(vid)
+    except Exception as exc:
+        langs = []
+        st.error(f"❌ Could not list transcripts for this video: {exc}")
+    if langs:
+        sel_lang = st.selectbox(
+            "🗣️ Select transcript language:",
+            langs,
+            index=_default_lang_index(langs),
+        )
+elif video_url.strip():
+    st.warning("❌ Invalid YouTube URL or Video ID.")
+
 download = st.button("⬇️ Download Transcript")
 
 
-def download_transcript(url: str, fname: str, fmt: str):
+def download_transcript(vid: str, sel_lang: str, info: dict, fname: str, fmt: str):
     try:
-        vid = extract_video_id(url)
-        if not vid:
-            st.error("❌ Invalid YouTube URL or Video ID.")
-            return
-
-        info = get_video_info(vid)
-        if info["thumbnail_url"]:
-            st.image(info["thumbnail_url"], caption=f"{info['title']} – {info['author_name']}")  # noqa: E501
-
-        tlist = list_transcripts(vid)
-        langs = [tr.language_code for tr in tlist]
-        sel_lang = st.selectbox("🗣️ Select transcript language:", langs)
-
         transcript = get_transcript_with_fallback(vid, sel_lang)
 
         # if helper returned a FetchedTranscript, convert:
@@ -189,10 +225,12 @@ def download_transcript(url: str, fname: str, fmt: str):
 
 
 if download:
-    if not video_url:
-        st.error("❌ Please enter a YouTube Video URL or Video ID.")
-    elif not file_name:
+    if not vid:
+        st.error("❌ Please enter a valid YouTube Video URL or Video ID.")
+    elif not file_name.strip():
         st.error("❌ Please enter a valid file name.")
+    elif not sel_lang:
+        st.error("❌ No transcript language is available for this video.")
     else:
-        download_transcript(video_url.strip(), file_name.strip(), export_format)
+        download_transcript(vid, sel_lang, info, file_name.strip(), export_format)
 
