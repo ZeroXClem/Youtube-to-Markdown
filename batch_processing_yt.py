@@ -35,7 +35,10 @@ def get_video_info(video_id: str) -> dict:
 
 def process_transcript(transcript: List[dict]) -> List[str]:
     """Processes the transcript into paragraphs."""
-    full_text = ' '.join([fragment['text'] for fragment in transcript])
+    full_text = ' '.join(
+        getattr(fragment, "text", fragment.get("text", "") if isinstance(fragment, dict) else "")
+        for fragment in transcript
+    )
     full_text = re.sub(r'\[?[0-9]+:[0-9]+\]?', '', full_text)
     sentences = re.split(r'(?<=[.!?]) +', full_text)
 
