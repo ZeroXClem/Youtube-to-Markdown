@@ -1,3 +1,5 @@
+
+
 # 🎥 YouTube to Markdown Converter 📝
 
 This project provides both a web-based (Streamlit) and command-line (CLI) tools to convert YouTube video transcripts into easily readable Markdown, Plain Text, or JSON formats.
@@ -55,7 +57,7 @@ uv pip install -r requirements.txt
 pip install -r requirements.txt
 ```
 
-> **Note:** If any issues arise, install these individually: `youtube-transcript-api`, `yt-dlp`, `requests`.
+> **Note:** If any issues arise, install these individually: `youtube-transcript-api`, `yt-dlp`, `requests`, `streamlit`.
 
 ---
 
@@ -226,4 +228,3 @@ MIT License. See [LICENSE](https://choosealicense.com/licenses/mit/).
 ---
 
 Made with ❤️ by [ZeroXClem]
-
