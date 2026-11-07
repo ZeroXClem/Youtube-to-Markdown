@@ -35,7 +35,8 @@ def get_video_info(video_id: str) -> dict:
 
 def process_transcript(transcript: List[dict]) -> List[str]:
     """Processes the transcript into paragraphs."""
-    full_text = ' '.join([fragment['text'] for fragment in transcript])
+    # youtube-transcript-api >= 1.0 returns snippet objects; older versions return dicts.
+    full_text = ' '.join([getattr(fragment, "text", None) or fragment["text"] for fragment in transcript])
     full_text = re.sub(r'\[?[0-9]+:[0-9]+\]?', '', full_text)
     sentences = re.split(r'(?<=[.!?]) +', full_text)
 
